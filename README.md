@@ -135,5 +135,5 @@ This script is provided free for personal and research use. No warranty. Use at 
 
 ## Author
 
-- [Your Name Here]
+- [weirdly0]
 - Contributions welcome!
