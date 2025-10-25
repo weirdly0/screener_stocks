@@ -61,7 +61,6 @@ jobs:
           python fast.py \
             --use-async \
             --concurrency "${NSE_CONCURRENCY}" \
-            --universe-cache-hours "${UNIVERSE_CACHE_HOURS}" \
             --avg-days 5 \
             --spike-multiple 3 \
             --min-deliv-qty 10000
