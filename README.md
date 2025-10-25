@@ -33,7 +33,7 @@ This tool scans NSE stocks for high delivery quantity spikes, helping traders an
 1. **Clone or Download** the script to your machine.
 2. **Install dependencies:**
    ```zsh
-   pip install pandas requests yfinance openpyxl tqdm httpx
+   pip install -r requirements.txt
    ```
    - `tqdm` and `httpx` are optional (for progress bars and async mode).
 3. **(Optional) Set up Telegram alerts:**
