@@ -15,6 +15,7 @@ env:
   TZ: Asia/Kolkata
   # Tune async concurrency (your script supports --use-async & --concurrency)
   NSE_CONCURRENCY: "4"
+  CI: true
   
 
 jobs:
