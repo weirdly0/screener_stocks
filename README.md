@@ -13,6 +13,7 @@ This tool scans NSE stocks for high delivery quantity spikes, helping traders an
   - Deliverable Qty ≥ 10,000 (configurable)
   - Delivery spike ≥ 4x (vs last N days avg, configurable)
   - Market Cap ≥ ₹100 cr (configurable)
+  - EMA for filter stocks based on ema
 - **Output:** Excel file (Candidates + Raw), TradingView links, optional Telegram alert.
 
 ## Features
@@ -57,14 +58,15 @@ python fast.py [options]
 | `--spike-multiple`      | Delivery spike threshold (e.g., 4 = 4x spike vs avg)                                        | 3.0                    |
 | `--avg-days`            | Number of days for average delivery calculation                                             | 5                      |
 | `--min-deliv-qty`       | Minimum deliverable quantity to consider                                                    | 10,000                 |
-| `--min-mcap-inr`        | Minimum market cap in INR (e.g., 1000000000 = ₹100 cr)                                     | 1,000,000,000          |
+| `--min-mcap-inr`        | Minimum market cap in INR (e.g., 1000000000 = ₹100 cr)                                      | 1,000,000,000          |
 | `--symbols`             | Comma-separated list of NSE symbols to scan (overrides universe)                            |                        |
-| `--universe`            | Universe source: `nse` (default) or `file`                                                 | nse                    |
+| `--universe`            | Universe source: `nse` (default) or `file`                                                  | nse                    |
 | `--universe-file`       | Path to CSV file with SYMBOL column (if using `--universe file`)                            |                        |
 | `--universe-cache-hours`| Max age (hours) for cached universe files                                                   | 24                     |
 | `--no-bhav-prefilter`   | Disable bhav prefilter step (scan all symbols)                                              |                        |
 | `--use-async`           | Use async mode (httpx) for faster data fetching                                             |                        |
 | `--concurrency`         | Number of concurrent requests in async mode                                                 | 8                      |
+|`--ema`                  |EMA filter for filter for finding stocks that are above a specific ema only (enabled by default)| 200                    |
 
 ### Example Commands
 
@@ -95,7 +97,7 @@ python fast.py [options]
 
 - **Ema Feature**
   ```zsh
-  --ema-days (default 200) and --no-ema-filter
+  python fast.py --ema-days (default 200) and --no-ema-filter
   ```
 
 ## Output
