@@ -1,4 +1,4 @@
-name: NSE High-Delivery Scan (10:00 IST, Mon–Fri)
+name: NSE High-Delivery Scan (12:00 PM IST, Mon–Fri)
 
 on:
   schedule:
