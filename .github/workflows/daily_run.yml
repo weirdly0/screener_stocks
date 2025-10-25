@@ -3,7 +3,7 @@ name: NSE High-Delivery Scan (10:00 IST, Mon–Fri)
 on:
   schedule:
     # GitHub cron is UTC. 10:00 IST == 04:30 UTC. Mon–Fri only.
-    - cron: "30 4 * * 1-5"
+    - cron: "30 6 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -14,9 +14,8 @@ env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   TZ: Asia/Kolkata
   # Tune async concurrency (your script supports --use-async & --concurrency)
-  NSE_CONCURRENCY: "12"
-  # Optional: control cache refresh of NSE universe
-  UNIVERSE_CACHE_HOURS: "24"
+  NSE_CONCURRENCY: "8"
+  
 
 jobs:
   run-screener:
@@ -38,7 +37,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.10.12" 
           cache: "pip"
 
       - name: Install dependencies
