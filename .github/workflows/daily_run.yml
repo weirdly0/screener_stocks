@@ -1,0 +1,88 @@
+name: NSE High-Delivery Scan (10:00 IST, Mon–Fri)
+
+on:
+  schedule:
+    # GitHub cron is UTC. 10:00 IST == 04:30 UTC. Mon–Fri only.
+    - cron: "30 4 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  TZ: Asia/Kolkata
+  # Tune async concurrency (your script supports --use-async & --concurrency)
+  NSE_CONCURRENCY: "12"
+  # Optional: control cache refresh of NSE universe
+  UNIVERSE_CACHE_HOURS: "24"
+
+jobs:
+  run-screener:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    concurrency:
+      group: nse-daily-fast
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Prepare folders (cache/output)
+        run: |
+          mkdir -p cache output
+
+      # Optional: wire Telegram secrets for alerts (script reads these envs)
+      - name: Export Telegram secrets (optional)
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        run: |
+          echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> $GITHUB_ENV
+          echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> $GITHUB_ENV
+
+      - name: Check Telegram secrets present
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        run: echo "Telegram secrets are set."
+
+      - name: Run fast.py (async turbo)
+        run: |
+          set -e
+          python fast.py \
+            --use-async \
+            --concurrency "${NSE_CONCURRENCY}" \
+            --universe-cache-hours "${UNIVERSE_CACHE_HOURS}" \
+            --avg-days 5 \
+            --spike-multiple 3 \
+            --min-deliv-qty 10000
+        # (all flags above match your defaults; keep here for explicitness)
+
+      - name: Upload Excel results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ github.run_id }}
+          path: output/*.xlsx
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload logs (optional)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ github.run_id }}
+          path: |
+            **/*.log
+          if-no-files-found: ignore
+          retention-days: 7
