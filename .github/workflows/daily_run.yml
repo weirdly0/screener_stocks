@@ -60,7 +60,6 @@ jobs:
           set -e
           python fast.py \
             --use-async \
-            --concurrency "${NSE_CONCURRENCY}" \
             --avg-days 5 \
             --spike-multiple 3 \
             --min-deliv-qty 10000
