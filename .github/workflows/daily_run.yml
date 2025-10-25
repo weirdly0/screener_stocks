@@ -26,6 +26,11 @@ jobs:
       group: nse-daily-fast
       cancel-in-progress: false
 
+    # Map secrets to job env so steps (and if: expressions) can use env.*
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,18 +50,12 @@ jobs:
         run: |
           mkdir -p cache output
 
-      # Optional: wire Telegram secrets for alerts (script reads these envs)
-      - name: Export Telegram secrets (optional)
-        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
-        run: |
-          echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> $GITHUB_ENV
-          echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> $GITHUB_ENV
-
       - name: Check Telegram secrets present
-        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        if: ${{ env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
         run: echo "Telegram secrets are set."
 
       - name: Run fast.py (async turbo)
+        # Secrets already provided via job-level env
         run: |
           set -e
           python fast.py \
@@ -66,7 +65,7 @@ jobs:
             --avg-days 5 \
             --spike-multiple 3 \
             --min-deliv-qty 10000
-        # (all flags above match your defaults; keep here for explicitness)
+        # (all flags above match your defaults; kept here for explicitness)
 
       - name: Upload Excel results
         if: always()
