@@ -93,6 +93,11 @@ python fast.py [options]
   python fast.py --no-bhav-prefilter
   ```
 
+- **Ema Feature**
+  ```zsh
+  --ema-days (default 200) and --no-ema-filter
+  ```
+
 ## Output
 
 - **Excel file:** Saved in `output/HighDelivery_<YYYY-MM-DD>.xlsx` with:

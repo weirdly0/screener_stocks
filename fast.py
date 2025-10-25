@@ -8,7 +8,12 @@ High Delivery Quantity Scanner (Free, NSE)
 - Bhav prefilter: legacy cmDDMMMYYYYbhav.csv.zip (skip illiquid/no-move)
 - Delivery data: NSE "priceVolumeDeliverable" (per symbol, short timeouts, retries, rate limiting)
 - Optional async mode (httpx) with concurrency
-- Filters:  %chg > 0, DeliverableQty >= 10,000, Delivery spike >= 4x (vs last N days avg), Mcap >= ₹100 cr
+- Filters:
+    %chg > 0,
+    DeliverableQty >= 10,000,
+    Delivery spike >= 4x (vs last N days avg),
+    Mcap >= ₹100 cr,
+    **NEW:** Last close > EMA(N) (default N=200) — can disable with --no-ema-filter
 - Output: Excel (Candidates + Raw), TradingView links, optional Telegram alert
 
 Usage examples:
@@ -17,6 +22,8 @@ Usage examples:
   python screener.py --symbols RELIANCE,SBIN,TATAMOTORS
   python screener.py --min-deliv-qty 20000 --spike-multiple 5
   python screener.py --universe file --universe-file my_watchlist.csv
+  python screener.py --ema-days 100
+  python screener.py --no-ema-filter
 """
 
 import os
@@ -45,7 +52,7 @@ except Exception:
 
 # Optional async turbo
 try:
-    import httpx, asyncio, random
+    import httpx, asyncio, random as _random  # keep random alias separate for async jitter
     HAS_HTTPX = True
 except Exception:
     HAS_HTTPX = False
@@ -55,6 +62,7 @@ DEFAULT_SPIKE_MULTIPLE = 3.0
 DEFAULT_AVG_DAYS = 5
 DEFAULT_MIN_DELIV_QTY = 10_000
 DEFAULT_MARKET_CAP_MIN_INR = 1_000_000_000  # ₹100 cr
+DEFAULT_EMA_DAYS = 200
 OUTPUT_DIR = "output"
 CACHE_DIR = "cache"
 
@@ -63,7 +71,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 GET_TIMEOUT = (10, 10)  # (connect, read) seconds
 
-# NSE endpoints (official pages list these datasets; sec_list.csv is linked on "Securities available for Trading")  # refs in answer
+# NSE endpoints (official pages list these datasets; sec_list.csv is linked on "Securities available for Trading")
 NSE_BASE = "https://www.nseindia.com"
 NSE_API = NSE_BASE + "/api/historicalOR/generateSecurityWiseHistoricalData"
 SEC_LIST = "https://nsearchives.nseindia.com/content/equities/sec_list.csv"
@@ -192,7 +200,7 @@ def bhav_prefilter_symbols(min_ttq=10_000, require_pos_change=True) -> Optional[
                 cond &= (bhav["PCT_CHANGE"] > 0)
             syms = bhav.loc[cond, "SYMBOL"].astype(str).str.upper().unique().tolist()
             return syms if syms else None
-    # If UDiFF wiring is added, hook it here (NSE All Reports lists UDiFF Common Bhavcopy).  # refs in answer
+    # If UDiFF wiring is added, hook it here (NSE All Reports lists UDiFF Common Bhavcopy).
     return None
 
 # ---------- DELIVERY CSV PARSING ----------
@@ -287,8 +295,27 @@ def get_market_cap_inr(yahoo_symbol: str) -> Optional[float]:
         return None
     return None
 
+# ---------- EMA FILTER (using yfinance daily bars) ----------
+def yf_last_close_and_ema(yahoo_symbol: str, ema_days: int = DEFAULT_EMA_DAYS) -> Tuple[Optional[float], Optional[float]]:
+    """
+    Returns (last_close, ema_n). Uses up to ~max(ema_days+40, 260) trading days for warmup.
+    """
+    try:
+        min_days = max(ema_days + 40, 260)
+        t = yf.Ticker(yahoo_symbol)
+        hist = t.history(period=f"{min_days}d", interval="1d", auto_adjust=False)
+        if hist is None or hist.empty or "Close" not in hist.columns:
+            return None, None
+        close = hist["Close"].dropna()
+        if close.empty:
+            return None, None
+        ema = close.ewm(span=ema_days, adjust=False).mean()
+        return float(close.iloc[-1]), float(ema.iloc[-1])
+    except Exception:
+        return None, None
+
 # ---------- EXCEL + TELEGRAM ----------
-def export_excel(df_filtered: pd.DataFrame, df_raw: pd.DataFrame, cfg) -> str:
+def export_excel(df_filtered: pd.DataFrame, df_raw: pd.DataFrame, cfg, ema_days: int, require_ema: bool) -> str:
     ensure_dirs()
     path = os.path.join(OUTPUT_DIR, f"HighDelivery_{ist_today().strftime('%Y-%m-%d')}.xlsx")
     with pd.ExcelWriter(path, engine="openpyxl") as xl:
@@ -300,13 +327,13 @@ def export_excel(df_filtered: pd.DataFrame, df_raw: pd.DataFrame, cfg) -> str:
             "spike_multiple_threshold": cfg.spike_multiple,
             "avg_days": cfg.avg_days,
             "min_deliverable_qty": cfg.min_deliv_qty,
-            "min_market_cap_inr": cfg.min_mcap_inr
+            "min_market_cap_inr": cfg.min_mcap_inr,
+            "ema_days": ema_days,
+            "ema_filter_enabled": require_ema,
         }]).to_excel(xl, index=False, sheet_name="Run_Info")
     return path
 
 # --- Telegram helpers (robust) ---
-
-
 TG_API_BASE = "https://api.telegram.org"
 
 def tg_post(path: str, token: str, payload: dict, files=None) -> dict:
@@ -444,7 +471,7 @@ async def async_fetch_many(symbols: List[str], avg_days: int, concurrency: int) 
 
     async def worker(sym: str):
         async with sem:
-            await asyncio.sleep(random.uniform(0.02, 0.12))
+            await asyncio.sleep(_random.uniform(0.02, 0.12))
             _, df = await async_fetch_one(client, sym, start, today)
             m = compute_today_metrics(df, avg_days) if df is not None else None
             if m:
@@ -483,6 +510,8 @@ def main():
     parser.add_argument("--avg-days", type=int, default=DEFAULT_AVG_DAYS)
     parser.add_argument("--min-deliv-qty", type=int, default=DEFAULT_MIN_DELIV_QTY)
     parser.add_argument("--min-mcap-inr", type=float, default=DEFAULT_MARKET_CAP_MIN_INR)
+    parser.add_argument("--ema-days", type=int, default=DEFAULT_EMA_DAYS, help="EMA length for price-above-EMA filter")
+    parser.add_argument("--no-ema-filter", action="store_true", help="Disable the price>EMA filter")
     parser.add_argument("--symbols", type=str, default="", help="Comma-separated NSE symbols to scan (overrides universe)")
     parser.add_argument("--universe", type=str, default="nse", help="nse (default) | file")
     parser.add_argument("--universe-file", type=str, default="", help="CSV path with SYMBOL column if --universe file")
@@ -493,6 +522,8 @@ def main():
     args = parser.parse_args()
 
     cfg = ScanConfig(args.spike_multiple, args.avg_days, args.min_deliv_qty, args.min_mcap_inr)
+    ema_days = args.ema_days
+    require_ema = (not args.no_ema_filter)
 
     # Universe
     if args.symbols.strip():
@@ -515,6 +546,7 @@ def main():
 
     print(f"Thresholds — Spike×≥{cfg.spike_multiple}, DelivQty≥{cfg.min_deliv_qty:,}, "
           f"Mcap≥₹{cfg.min_mcap_inr:,.0f}, %Chg>0")
+    print(f"EMA filter: {'ON' if require_ema else 'OFF'} (price above EMA-{ema_days})")
 
     # Bhav prefilter
     if not args.no_bhav_prefilter:
@@ -575,7 +607,7 @@ def main():
                 if m:
                     raw_records.append({
                         "SYMBOL": sym, "DATE": m["date"], "PREV_CLOSE": m["prev_close"], "CLOSE": m["close"],
-                        "PCT_CHANGE": m["pct_change"], "TOTAL_TRADED_QTY": m["total_traded_q ty"] if False else m["total_traded_qty"],
+                        "PCT_CHANGE": m["pct_change"], "TOTAL_TRADED_QTY": m["total_traded_qty"],  # fixed typo
                         "DELIVERABLE_QTY": m["deliverable_qty"], "DELIVERABLE_PCT": m["deliverable_pct"],
                         f"AVG_DELIV_LAST_{cfg.avg_days}D": m["avg_deliv_qty_last_n"],
                         "DELIV_SPIKE_MULT": m["delivery_spike_multiple"], "TRADINGVIEW": build_tradingview_link(sym),
@@ -592,20 +624,50 @@ def main():
             (df_raw["PCT_CHANGE"] > 0)
         ].copy()
 
-        # Market caps for shortlisted only
-        mcaps = []
-        short_syms = df_stage["SYMBOL"].tolist()
-        caps_iter = short_syms if tqdm is None else tqdm(short_syms, desc="Fetching market caps", unit="stk", dynamic_ncols=True)
-        for sym in caps_iter:
-            mcaps.append(get_market_cap_inr(f"{sym}.NS") or float("nan"))
-            time.sleep(0.03)
-        df_stage["MARKET_CAP_INR"] = mcaps
+        # --- NEW: price-above-EMA filter (default ON) ---
+        if not df_stage.empty and require_ema:
+            ema_vals: List[float] = []
+            last_vals: List[float] = []
+            keep_mask: List[bool] = []
+            ema_iter = df_stage["SYMBOL"].tolist()
+            ema_iter = ema_iter if tqdm is None else tqdm(ema_iter, desc=f"EMA{ema_days} filter", unit="stk", dynamic_ncols=True)
 
-        df_filtered = df_stage[df_stage["MARKET_CAP_INR"] >= cfg.min_mcap_inr].copy()
-        df_filtered = df_filtered.sort_values(["DELIV_SPIKE_MULT", "DELIVERABLE_QTY"], ascending=False, ignore_index=True)
+            for sym in ema_iter:
+                last_close, ema_n = yf_last_close_and_ema(f"{sym}.NS", ema_days=ema_days)
+                ema_vals.append(ema_n if ema_n is not None else float("nan"))
+                last_vals.append(last_close if last_close is not None else float("nan"))
+                keep_mask.append(
+                    (last_close is not None) and (ema_n is not None) and (last_close > ema_n)
+                )
+                time.sleep(0.02)  # be polite to Yahoo endpoints
+
+            df_stage[f"EMA_{ema_days}"] = ema_vals
+            df_stage["YF_LAST_CLOSE"] = last_vals
+            df_stage = df_stage[pd.Series(keep_mask, index=df_stage.index)].copy()
+
+        # If EMA filter dropped everything, short-circuit
+        if df_stage.empty:
+            df_filtered = pd.DataFrame()
+        else:
+            # Market caps for shortlisted only
+            mcaps = []
+            short_syms = df_stage["SYMBOL"].tolist()
+            caps_iter = short_syms if tqdm is None else tqdm(short_syms, desc="Fetching market caps", unit="stk", dynamic_ncols=True)
+            for sym in caps_iter:
+                mcaps.append(get_market_cap_inr(f"{sym}.NS") or float("nan"))
+                time.sleep(0.03)
+            df_stage["MARKET_CAP_INR"] = mcaps
+
+            # Final Stage-2: mcap threshold + tidy sort
+            df_filtered = df_stage[df_stage["MARKET_CAP_INR"] >= cfg.min_mcap_inr].copy()
+
+        if not df_filtered.empty:
+            df_filtered = df_filtered.sort_values(
+                ["DELIV_SPIKE_MULT", "DELIVERABLE_QTY"], ascending=False, ignore_index=True
+            )
 
     # Output
-    xl_path = export_excel(df_filtered, df_raw, cfg)
+    xl_path = export_excel(df_filtered, df_raw, cfg, ema_days=ema_days, require_ema=require_ema)
 
     print("\n=== Candidates ===")
     if df_filtered.empty:
@@ -613,8 +675,14 @@ def main():
     else:
         for _, r in df_filtered.iterrows():
             mcap_cr = (r["MARKET_CAP_INR"] or 0) / 1e7
+            more = ""
+            if require_ema and f"EMA_{ema_days}" in r and "YF_LAST_CLOSE" in r:
+                try:
+                    more = f" | Lc>EMA{ema_days}: {r['YF_LAST_CLOSE']:.2f}>{r[f'EMA_{ema_days}']:.2f}"
+                except Exception:
+                    more = ""
             print(f"{r['SYMBOL']:>10} | Δ{r['PCT_CHANGE']:.2f}% | Deliv {int(r['DELIVERABLE_QTY']):,} | "
-                  f"Spike× {r['DELIV_SPIKE_MULT']:.2f} | Mcap ₹{mcap_cr:.2f}Cr | {r['TRADINGVIEW']}")
+                  f"Spike× {r['DELIV_SPIKE_MULT']:.2f} | Mcap ₹{mcap_cr:.2f}Cr{more} | {r['TRADINGVIEW']}")
 
     print(f"\nExcel saved to: {xl_path}")
 

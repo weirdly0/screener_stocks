@@ -1,0 +1,7 @@
+requests
+pandas
+yfinance
+python-dotenv
+openpyxl
+tqdm
+httpx[http2]
