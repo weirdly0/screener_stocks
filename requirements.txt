@@ -1,7 +1,8 @@
 requests
-pandas
 yfinance
 python-dotenv
 openpyxl
 tqdm
-httpx[http2]
+pandas==2.2.2
+numpy==1.26.4
+httpx[http2]==0.27.0
