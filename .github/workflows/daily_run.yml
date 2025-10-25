@@ -14,7 +14,7 @@ env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   TZ: Asia/Kolkata
   # Tune async concurrency (your script supports --use-async & --concurrency)
-  NSE_CONCURRENCY: "4"
+  NSE_CONCURRENCY: "2"
   CI: true
   
 
