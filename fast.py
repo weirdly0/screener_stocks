@@ -436,7 +436,7 @@ async def async_init_client() -> httpx.AsyncClient:
         "Pragma": "no-cache",
     }
     limits = httpx.Limits(max_connections=12, max_keepalive_connections=6)
-    timeout = httpx.Timeout(connect=10.0, read=10.0)
+    timeout = httpx.Timeout(connect=15.0, read=15.0, write=15.0, pool=15.0)
     client = httpx.AsyncClient(headers=headers, timeout=timeout, limits=limits, http2=True)
     try:
         await client.get("https://www.nseindia.com/")
