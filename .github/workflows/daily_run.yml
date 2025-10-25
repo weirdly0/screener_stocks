@@ -58,10 +58,7 @@ jobs:
         run: |
           set -e
           python fast.py \
-            --use-async \
-            --avg-days 5 \
-            --spike-multiple 3 \
-            --min-deliv-qty 10000
+            --use-async 
         # (all flags above match your defaults; kept here for explicitness)
 
       - name: Upload Excel results
